@@ -28,19 +28,25 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 
 @Composable
-fun TelaBuscaVoos(navController: NavController) {
+fun TelaBuscaVoos(
+    navController: NavController,
+    reservas: List<Reserva> = emptyList()
+) {
     var tripType by remember { mutableStateOf("Ida e Volta") }
     var origem by remember { mutableStateOf("Curitiba (CWB)") }
     var destino by remember { mutableStateOf("Miami (MIA)") }
     var dataIda by remember { mutableStateOf("15 Mar 2026") }
     var dataVolta by remember { mutableStateOf("22 Mar 2026") }
-    var passageirosConfig by remember { mutableStateOf("1 Adulto, Economica") }
+    var passageirosConfig by remember { mutableStateOf("1 Adulto, Econ\u00F4mica") }
 
     var dialogDataAbertaPara by remember { mutableStateOf<String?>(null) }
     var dialogPassageirosAberto by remember { mutableStateOf(false) }
 
     val scrollState = rememberScrollState()
     val context = LocalContext.current
+
+    val cashbackAcumuladoRoom = reservas.sumOf { it.cashbackGanho }
+    val saldoExibido = if (reservas.isNotEmpty()) cashbackAcumuladoRoom else 340.0
 
     if (dialogDataAbertaPara != null) {
         val tipoData = dialogDataAbertaPara ?: "Ida"
@@ -88,11 +94,11 @@ fun TelaBuscaVoos(navController: NavController) {
 
     if (dialogPassageirosAberto) {
         val opcoesPassageiros = listOf(
-            "1 Adulto, Economica",
-            "2 Adultos, Economica",
+            "1 Adulto, Econ\u00F4mica",
+            "2 Adultos, Econ\u00F4mica",
             "1 Adulto, Executiva",
             "2 Adultos, Executiva",
-            "Familia (2 Adultos + 1 Crianca)"
+            "Fam\u00EDlia (2 Adultos + 1 Crian\u00E7a)"
         )
 
         AlertDialog(
@@ -107,7 +113,7 @@ fun TelaBuscaVoos(navController: NavController) {
                                 .clickable {
                                     passageirosConfig = opcao
                                     dialogPassageirosAberto = false
-                                    Toast.makeText(context, "Configuracao alterada para: $opcao", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Configura\u00E7\u00E3o alterada para: $opcao", Toast.LENGTH_SHORT).show()
                                 },
                             shape = RoundedCornerShape(8.dp),
                             color = CardBackground
@@ -167,7 +173,7 @@ fun TelaBuscaVoos(navController: NavController) {
                         color = TextSecondary
                     )
                     Text(
-                        text = "Olá, Davyd",
+                        text = "Ol\u00E1, Davyd",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
@@ -180,7 +186,7 @@ fun TelaBuscaVoos(navController: NavController) {
                     .size(40.dp)
                     .clip(CircleShape)
                     .clickable {
-                        Toast.makeText(context, "Nenhuma nova notificacao no momento.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Banco Room sincronizado (${reservas.size} reservas ativas).", Toast.LENGTH_SHORT).show()
                     },
                 shape = CircleShape,
                 color = Color.White,
@@ -209,7 +215,8 @@ fun TelaBuscaVoos(navController: NavController) {
 
         Card(
             modifier = Modifier
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .clickable { navController.navigate(Rotas.WALLET) },
             colors = CardDefaults.cardColors(containerColor = BrandDarkNavy)
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
@@ -219,7 +226,7 @@ fun TelaBuscaVoos(navController: NavController) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Saldo AeroBack acumulado",
+                        text = "Saldo AeroBack acumulado (Room)",
                         fontSize = 12.sp,
                         color = Color.White.copy(alpha = 0.8f)
                     )
@@ -240,7 +247,7 @@ fun TelaBuscaVoos(navController: NavController) {
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
-                    text = "R$ 340,00",
+                    text = "R$ ${"%.2f".format(saldoExibido)}",
                     fontSize = 26.sp,
                     fontWeight = FontWeight.Bold,
                     color = BrandGreen
@@ -249,7 +256,7 @@ fun TelaBuscaVoos(navController: NavController) {
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
-                    text = "Pronto para abater em sua próxima viagem",
+                    text = "Calculado a partir de ${reservas.size} reservas salvas localmente",
                     fontSize = 11.sp,
                     color = Color(0xFF8E9EB5)
                 )
@@ -272,7 +279,7 @@ fun TelaBuscaVoos(navController: NavController) {
                         .padding(4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    listOf("Ida e Volta", "Somente Ida", "Multiplos").forEach { type ->
+                    listOf("Ida e Volta", "Somente Ida", "M\u00FAltiplos").forEach { type ->
                         val isSelected = tripType == type
                         Box(
                             modifier = Modifier
@@ -392,7 +399,7 @@ fun TelaBuscaVoos(navController: NavController) {
                                     lineTo(w * 0.35f, h * 0.85f)
                                 }
                                 drawPath(path1, TextPrimary, style = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
-                                drawPath(path2, TextPrimary, style = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
+                                drawPath(path2, TextPrimary, style = Stroke(width = 1.8.dp.toPx(), cap = StrokeJoin.Round.let { StrokeCap.Round }, join = StrokeJoin.Round))
                             }
                         }
                     }
@@ -540,7 +547,7 @@ fun TelaBuscaVoos(navController: NavController) {
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     Text("Voos Internacionais Promocionais", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                    Text("Toque para ver a lista de rotas disponiveis", fontSize = 11.sp, color = TextSecondary)
+                    Text("Toque para ver a lista de rotas dispon\u00EDveis", fontSize = 11.sp, color = TextSecondary)
                 }
             }
         }
@@ -550,4 +557,5 @@ fun TelaBuscaVoos(navController: NavController) {
 }
 
 @Composable
-fun SearchScreen(navController: NavController) = TelaBuscaVoos(navController)
+fun SearchScreen(navController: NavController, reservas: List<Reserva> = emptyList()) =
+    TelaBuscaVoos(navController, reservas)

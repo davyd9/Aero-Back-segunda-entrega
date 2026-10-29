@@ -1,4 +1,4 @@
-﻿package com.example.aeroback
+package com.example.aeroback
 
 object Rotas {
     const val SEARCH = "search"

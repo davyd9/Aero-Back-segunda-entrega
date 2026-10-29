@@ -1,31 +1,37 @@
-﻿# Relatório de Decisões e Processo de Desenvolvimento — MAF (AeroBack)
+# Trabalho 3 â€” PersistÃªncia de Dados com Room (AeroBack)
 
-## 1. Como estava o projeto no Trabalho 1, e o que mudou para chegar até aqui?
-No Trabalho 1, o AeroBack contava com 3 telas estáticas: Busca de Voos (`SearchScreen`), Radar de Preços (`PriceRadarScreen`) e Carteira Digital de Cashback (`WalletScreen`). Os botões não realizavam trocas de telas reais e a navegação da barra inferior alternava apenas uma variável de estado estática (`when (selectedTab)`).
+**Aluno:** Davyd Eduardo Ferreira Molina
 
-Para o MAF (Trabalho 2), integramos uma arquitetura completa de navegação com `NavHost`, `NavController` e rotas fortemente tipadas em um `object Rotas`. Além disso, implementamos duas coleções reativas (`mutableStateListOf`) gerenciadas no nível da aplicação para as entidades de `Voo` e `Reserva`, totalizando 7 telas com adição, remoção, alteração de estado e navegação parametrizada.
+---
 
-## 2. Por que essas telas novas — o que cada uma faz e por que o trio escolheu elas?
-Criamos 4 novas telas navegáveis divididas em duas entidades de domínio do app:
-- `FlightListScreen` (Lista de Voos): Permite listar os voos que oferecem cashback, filtrar destinos e adicionar novas ofertas de voos dinamicamente.
-- `FlightDetailScreen` (Detalhe do Voo): Apresenta o itinerário detalhado e permite customizar adicionais de viagem antes de emitir a reserva.
-- `BookingListScreen` (Lista de Reservas): Permite visualizar as viagens adquiridas, emitir novas reservas manuais, cancelar passagens e realizar o check-in online.
-- `BookingDetailScreen` (Cartão de Embarque): Exibe o bilhete eletrônico completo combinando as informações da reserva e do voo selecionado.
+## 1. VisÃ£o Geral da EvoluÃ§Ã£o
+Nesta terceira entrega do projeto **AeroBack**, as listas volÃ¡teis em memÃ³ria (`mutableStateListOf`) foram substituÃ­das pela persistÃªncia relacional local utilizando o **Android Room (SQLite)** integrado com **Kotlin Coroutines**, **Flow/StateFlow** e **ViewModel**.
 
-Essas telas foram escolhidas porque representam o fluxo de valor central do AeroBack: pesquisar um voo, calcular benefícios em tempo real e emitir a passagem.
+---
 
-## 3. Que decisão de configuração/organização do código o trio tomou, e por quê?
-- **Rotas centralizadas em `AppNavigation.kt`:** Definimos um `object Rotas` contendo constantes `const val String` para todas as telas e funções utilitárias que montam rotas com argumentos (`Rotas.flightDetail(id)` e `Rotas.bookingDetail(id)`), prevenindo erros de digitação.
-- **Estado reativo no nível da aplicação:** As listas reativas (`mutableStateListOf<Voo>` e `mutableStateListOf<Reserva>`) foram declaradas na função raiz `AeroBackMainApp()`. Isso assegura que os itens adicionados ou removidos persistam em memória durante toda a navegação e recomposição das rotas.
-- **Navegação com `popBackStack()`:** Adicionamos `TopAppBar` nas telas de detalhes e listas filhas permitindo o retorno à pilha anterior sem recriar o grafo de navegação.
+## 2. Estrutura TÃ©cnica Implementada
 
-## 4. Qual foi a complexidade extra que o trio colocou na tela de Detalhes, e por que escolheram justamente essa?
-Na tela `FlightDetailScreen`, implementamos uma **calculadora de adicionais e cashback em tempo real**:
-1. O usuário pode alternar adicionais por meio de `Checkbox` (como Bagagem Despachada de +R$ 150,00 e Assento Conforto de +R$ 80,00).
-2. O composable recalcula instantaneamente o valor final da passagem somado aos adicionais e o valor líquido em Reais de cashback creditado na carteira (`valorTotal * (cashbackPorcento / 100)`).
-3. Ao clicar em "Confirmar Reserva com Cashback", os dados calculados são convertidos diretamente em uma nova instância de `Reserva` vinculada ao ID do voo e adicionados à lista da segunda entidade.
+### 2.1 Entidades Room (`ModelosDados.kt`)
+Foram modeladas duas tabelas relacionais principais no banco local:
+- **`Voo` (`@Entity(tableName = "voos")`)**: Armazena o identificador Ãºnico (`@PrimaryKey val id: String`), companhia aÃ©rea, origem, destino, data de ida, horÃ¡rio, preÃ§o base e percentual de cashback.
+- **`Reserva` (`@Entity(tableName = "reservas")`)**: Armazena o identificador Ãºnico (`@PrimaryKey val id: String`), referÃªncia ao voo (`vooId`), nome do passageiro, assento, opcionais de bagagem despachada e assento VIP, preÃ§o final calculado, cashback ganho e status de check-in (`checkInRealizado`).
 
-Essa complexidade foi escolhida por refletir diretamente o diferencial de negócio do AeroBack (conversão de compra em saldo de cashback).
+### 2.2 DAOs e OperaÃ§Ãµes CRUD (`BancoDadosRoom.kt`)
+- **`VooDao` (`@Dao`)**:
+  - `listarVoos(): Flow<List<Voo>>`: Consulta reativa (`@Query`) que emite automaticamente atualizaÃ§Ãµes para a UI sempre que a tabela `voos` sofre alteraÃ§Ãµes.
+  - `inserirVoo` / `inserirListaVoos` (`@Insert(onConflict = OnConflictStrategy.REPLACE)`): CriaÃ§Ã£o de novos voos e carga inicial (*seed*).
+  - `atualizarVoo` (`@Update`): EdiÃ§Ã£o de dados de voos existentes.
+  - `deletarVoo` (`@Delete`): ExclusÃ£o permanente de voos.
+- **`ReservaDao` (`@Dao`)**:
+  - `listarReservas(): Flow<List<Reserva>>`: Consulta reativa (`@Query`) para listagem de reservas e cÃ¡lculo em tempo real da carteira de cashback.
+  - `inserirReserva` / `inserirListaReservas` (`@Insert`): PersistÃªncia de reservas originadas tanto da tela de detalhes do voo quanto da emissÃ£o manual.
+  - `atualizarReserva` (`@Update`): AtualizaÃ§Ã£o do status de check-in e ediÃ§Ã£o dos dados do passageiro/assento/bagagem.
+  - `deletarReserva` (`@Delete`): Cancelamento e remoÃ§Ã£o da reserva do banco local.
 
-## 5. Algum integrante teve dificuldade em algum ponto? Como resolveram?
-A principal dificuldade encontrada foi garantir que a remoção e alteração do status de check-in na lista de reservas refletisse imediatamente na recomposição da `LazyColumn`. Resolvemos isso utilizando a cópia imutável do objeto com `reserva.copy(checkInRealizado = checked)` associada à atribuição indexada na `SnapshotStateList`, garantindo que o Jetpack Compose detectasse a mutação de estado.
+### 2.3 ConfiguraÃ§Ã£o do Banco (`AeroBackDatabase`)
+- Implementado utilizando o padrÃ£o **Singleton thread-safe** (`@Volatile` + `synchronized`) sobre `RoomDatabase`, garantindo uma Ãºnica instÃ¢ncia do arquivo `aeroback_database.db` durante todo o ciclo de vida do aplicativo.
+
+### 2.4 Gerenciamento de Estado e Arquitetura (`AeroBackViewModel.kt`)
+- **`AeroBackRepository`**: Isola o acesso aos DAOs da camada de apresentaÃ§Ã£o.
+- **`AeroBackViewModel`**: Converte os `Flow` do Room em `StateFlow` via `stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())` e executa todas as escritas (`Insert`, `Update`, `Delete`) de forma assÃ­ncrona dentro de `viewModelScope.launch`.
+- **PrÃ©-populaÃ§Ã£o automÃ¡tica (*Seed*)**: No bloco `init`, o ViewModel verifica se o banco estÃ¡ vazio (`contarVoos() == 0`) e insere os registros iniciais apenas na primeira execuÃ§Ã£o.

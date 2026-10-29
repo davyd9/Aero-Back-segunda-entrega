@@ -1,6 +1,5 @@
 package com.example.aeroback
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -10,9 +9,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -26,12 +25,18 @@ import java.util.UUID
 @Composable
 fun TelaListaReservas(
     navController: NavController,
-    reservas: SnapshotStateList<Reserva>,
-    voos: List<Voo>
+    reservas: List<Reserva>,
+    voos: List<Voo>,
+    onAddReserva: (Reserva) -> Unit,
+    onUpdateReserva: (Reserva) -> Unit,
+    onDeleteReserva: (Reserva) -> Unit
 ) {
-    var showDialog by remember { mutableStateOf(false) }
+    var showCreateDialog by remember { mutableStateOf(false) }
+    var reservaEmEdicao by remember { mutableStateOf<Reserva?>(null) }
+
     var passageiroInput by remember { mutableStateOf("") }
     var assentoInput by remember { mutableStateOf("08B") }
+    var bagagemInput by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -47,7 +52,12 @@ fun TelaListaReservas(
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { showDialog = true },
+                onClick = {
+                    passageiroInput = ""
+                    assentoInput = "08B"
+                    bagagemInput = false
+                    showCreateDialog = true
+                },
                 containerColor = BrandGreen,
                 contentColor = Color.White
             ) {
@@ -63,7 +73,7 @@ fun TelaListaReservas(
                 .padding(horizontal = 16.dp)
         ) {
             Text(
-                text = "${reservas.size} reservas registradas",
+                text = "${reservas.size} reservas persistidas no Room",
                 fontSize = 13.sp,
                 color = TextSecondary,
                 modifier = Modifier.padding(vertical = 8.dp)
@@ -101,7 +111,7 @@ fun TelaListaReservas(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = vooCorrespondente?.let { "${it.origem} ➔ ${it.destino}" } ?: "Voo AeroBack",
+                                        text = vooCorrespondente?.let { "${it.origem} \u2794 ${it.destino}" } ?: "Voo AeroBack",
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 16.sp,
                                         color = TextPrimary
@@ -121,7 +131,7 @@ fun TelaListaReservas(
                                 }
 
                                 Spacer(modifier = Modifier.height(6.dp))
-                                Text("Passageiro: ${reserva.passageiro} • Assento: ${reserva.assento}", fontSize = 13.sp, color = TextSecondary)
+                                Text("Passageiro: ${reserva.passageiro} \u2022 Assento: ${reserva.assento}", fontSize = 13.sp, color = TextSecondary)
                                 Text("Faturado: R$ ${"%.2f".format(reserva.precoFinal)} (+R$ ${"%.2f".format(reserva.cashbackGanho)} cashback)", fontSize = 12.sp, color = BrandGreen, fontWeight = FontWeight.SemiBold)
 
                                 Spacer(modifier = Modifier.height(10.dp))
@@ -137,20 +147,31 @@ fun TelaListaReservas(
                                         Checkbox(
                                             checked = reserva.checkInRealizado,
                                             onCheckedChange = { checked ->
-                                                val index = reservas.indexOf(reserva)
-                                                if (index != -1) {
-                                                    reservas[index] = reserva.copy(checkInRealizado = checked)
-                                                }
+                                                onUpdateReserva(reserva.copy(checkInRealizado = checked))
                                             }
                                         )
                                         Text("Realizar Check-in", fontSize = 12.sp, color = TextPrimary)
                                     }
 
-                                    IconButton(
-                                        onClick = { reservas.remove(reserva) },
-                                        modifier = Modifier.size(32.dp)
-                                    ) {
-                                        Icon(Icons.Default.Delete, contentDescription = "Cancelar Reserva", tint = Color.Red.copy(alpha = 0.7f))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        IconButton(
+                                            onClick = {
+                                                passageiroInput = reserva.passageiro
+                                                assentoInput = reserva.assento
+                                                bagagemInput = reserva.bagagemDespachada
+                                                reservaEmEdicao = reserva
+                                            },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(Icons.Default.Edit, contentDescription = "Editar Reserva", tint = BrandDarkNavy.copy(alpha = 0.7f))
+                                        }
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        IconButton(
+                                            onClick = { onDeleteReserva(reserva) },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(Icons.Default.Delete, contentDescription = "Cancelar Reserva", tint = Color.Red.copy(alpha = 0.7f))
+                                        }
                                     }
                                 }
                             }
@@ -161,36 +182,42 @@ fun TelaListaReservas(
         }
     }
 
-    if (showDialog) {
+    if (showCreateDialog) {
         AlertDialog(
-            onDismissRequest = { showDialog = false },
+            onDismissRequest = { showCreateDialog = false },
             title = { Text("Emitir Reserva Manual") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(value = passageiroInput, onValueChange = { passageiroInput = it }, label = { Text("Nome do Passageiro") }, singleLine = true)
                     OutlinedTextField(value = assentoInput, onValueChange = { assentoInput = it }, label = { Text("Assento (ex: 15A)") }, singleLine = true)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = bagagemInput, onCheckedChange = { bagagemInput = it })
+                        Text("Incluir bagagem despachada")
+                    }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
                         val vooPadrao = voos.firstOrNull()
-                        if (passageiroInput.isNotBlank() && vooPadrao != null) {
-                            reservas.add(
+                        if (passageiroInput.isNotBlank()) {
+                            val precoBase = vooPadrao?.precoBase ?: 850.0
+                            val pct = vooPadrao?.cashbackPorcento ?: 10
+                            val precoFinal = precoBase + if (bagagemInput) 150.0 else 0.0
+                            onAddReserva(
                                 Reserva(
                                     id = UUID.randomUUID().toString(),
-                                    vooId = vooPadrao.id,
+                                    vooId = vooPadrao?.id ?: "voo-1",
                                     passageiro = passageiroInput,
                                     assento = assentoInput.ifBlank { "10A" },
-                                    bagagemDespachada = false,
+                                    bagagemDespachada = bagagemInput,
                                     assentoVip = false,
-                                    precoFinal = vooPadrao.precoBase,
-                                    cashbackGanho = vooPadrao.precoBase * (vooPadrao.cashbackPorcento / 100.0),
+                                    precoFinal = precoFinal,
+                                    cashbackGanho = precoFinal * (pct / 100.0),
                                     checkInRealizado = false
                                 )
                             )
-                            showDialog = false
-                            passageiroInput = ""
+                            showCreateDialog = false
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = BrandGreen)
@@ -199,13 +226,46 @@ fun TelaListaReservas(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDialog = false }) { Text("Cancelar") }
+                TextButton(onClick = { showCreateDialog = false }) { Text("Cancelar") }
+            }
+        )
+    }
+
+    if (reservaEmEdicao != null) {
+        val atual = reservaEmEdicao!!
+        AlertDialog(
+            onDismissRequest = { reservaEmEdicao = null },
+            title = { Text("Editar Reserva") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(value = passageiroInput, onValueChange = { passageiroInput = it }, label = { Text("Nome do Passageiro") }, singleLine = true)
+                    OutlinedTextField(value = assentoInput, onValueChange = { assentoInput = it }, label = { Text("Assento") }, singleLine = true)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = bagagemInput, onCheckedChange = { bagagemInput = it })
+                        Text("Bagagem despachada (23kg)")
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onUpdateReserva(
+                            atual.copy(
+                                passageiro = passageiroInput.ifBlank { atual.passageiro },
+                                assento = assentoInput.ifBlank { atual.assento },
+                                bagagemDespachada = bagagemInput
+                            )
+                        )
+                        reservaEmEdicao = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandGreen)
+                ) {
+                    Text("Atualizar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { reservaEmEdicao = null }) { Text("Cancelar") }
             }
         )
     }
 }
-
-
-
-@Composable
-fun BookingListScreen(navController: androidx.navigation.NavController, reservas: androidx.compose.runtime.snapshots.SnapshotStateList<Reserva>, voos: List<Voo>) = TelaListaReservas(navController, reservas, voos)

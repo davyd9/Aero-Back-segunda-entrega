@@ -1,4 +1,4 @@
-﻿package com.example.aeroback
+package com.example.aeroback
 
 import androidx.compose.ui.graphics.Color
 

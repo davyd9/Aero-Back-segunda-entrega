@@ -1,18 +1,12 @@
 package com.example.aeroback
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -27,14 +21,14 @@ import java.util.UUID
 fun TelaDetalhesVoo(
     flightId: String,
     voos: List<Voo>,
-    reservas: SnapshotStateList<Reserva>,
+    onConfirmarReserva: (Reserva) -> Unit,
     navController: NavController
 ) {
     val voo = voos.find { it.id == flightId }
 
     if (voo == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Voo não encontrado.")
+            Text("Voo n\u00E3o encontrado.")
         }
         return
     }
@@ -51,7 +45,7 @@ fun TelaDetalhesVoo(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Personalização e Detalhes", fontWeight = FontWeight.Bold) },
+                title = { Text("Personaliza\u00E7\u00E3o e Detalhes", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar")
@@ -82,14 +76,14 @@ fun TelaDetalhesVoo(
                         Text("+${voo.cashbackPorcento}% Cashback", color = BrandGreen, fontWeight = FontWeight.Bold)
                     }
                     Spacer(modifier = Modifier.height(10.dp))
-                    Text("${voo.origem} ➔ ${voo.destino}", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text("Horário: ${voo.horario} • Data: ${voo.dataIda}", color = Color(0xFF8E9EB5), fontSize = 13.sp)
+                    Text("${voo.origem} \u2794 ${voo.destino}", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text("Hor\u00E1rio: ${voo.horario} \u2022 Data: ${voo.dataIda}", color = Color(0xFF8E9EB5), fontSize = 13.sp)
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Text("Opcionais da Viagem (Cálculo em Tempo Real):", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TextPrimary)
+            Text("Opcionais da Viagem (C\u00E1lculo em Tempo Real):", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = TextPrimary)
 
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -97,7 +91,8 @@ fun TelaDetalhesVoo(
                 value = nomePassageiro,
                 onValueChange = { nomePassageiro = it },
                 label = { Text("Nome do Passageiro") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -123,7 +118,7 @@ fun TelaDetalhesVoo(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Checkbox(checked = addAssentoVip, onCheckedChange = { addAssentoVip = it })
-                Text("Assento Espaço Extra / VIP (+R$ 80,00)", fontSize = 14.sp)
+                Text("Assento Espa\u00E7o Extra / VIP (+R$ 80,00)", fontSize = 14.sp)
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -138,7 +133,7 @@ fun TelaDetalhesVoo(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Preço Base:", color = TextSecondary, fontSize = 13.sp)
+                        Text("Pre\u00E7o Base:", color = TextSecondary, fontSize = 13.sp)
                         Text("R$ ${"%.2f".format(voo.precoBase)}", color = TextPrimary, fontSize = 13.sp)
                     }
                     Row(
@@ -153,7 +148,7 @@ fun TelaDetalhesVoo(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Preço Final:", fontWeight = FontWeight.Bold, color = TextPrimary)
+                        Text("Pre\u00E7o Final:", fontWeight = FontWeight.Bold, color = TextPrimary)
                         Text("R$ ${"%.2f".format(valorTotalCalculado)}", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = TextPrimary)
                     }
                     Row(
@@ -181,7 +176,7 @@ fun TelaDetalhesVoo(
                         cashbackGanho = cashbackTotalCalculado,
                         checkInRealizado = false
                     )
-                    reservas.add(novaReserva)
+                    onConfirmarReserva(novaReserva)
                     navController.navigate(Rotas.BOOKING_LIST)
                 },
                 modifier = Modifier
@@ -195,7 +190,3 @@ fun TelaDetalhesVoo(
         }
     }
 }
-
-
-@Composable
-fun FlightDetailScreen(flightId: String, voos: List<Voo>, reservas: androidx.compose.runtime.snapshots.SnapshotStateList<Reserva>, navController: androidx.navigation.NavController) = TelaDetalhesVoo(flightId, voos, reservas, navController)

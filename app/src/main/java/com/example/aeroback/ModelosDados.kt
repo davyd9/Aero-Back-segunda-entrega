@@ -1,6 +1,11 @@
-﻿package com.example.aeroback
+package com.example.aeroback
 
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+
+@Entity(tableName = "voos")
 data class Voo(
+    @PrimaryKey
     val id: String,
     val companhia: String,
     val origem: String,
@@ -11,7 +16,9 @@ data class Voo(
     val cashbackPorcento: Int
 )
 
+@Entity(tableName = "reservas")
 data class Reserva(
+    @PrimaryKey
     val id: String,
     val vooId: String,
     val passageiro: String,
@@ -20,5 +27,5 @@ data class Reserva(
     val assentoVip: Boolean,
     val precoFinal: Double,
     val cashbackGanho: Double,
-    var checkInRealizado: Boolean = false
+    val checkInRealizado: Boolean = false
 )

@@ -27,10 +27,17 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 
 @Composable
-fun TelaCarteiraCashback(navController: NavController) {
+fun TelaCarteiraCashback(
+    navController: NavController,
+    reservas: List<Reserva> = emptyList()
+) {
     val scrollState = rememberScrollState()
     val context = LocalContext.current
-    val saldoDisponivel = "R$ 340,00"
+
+    val totalConfirmado = reservas.filter { it.checkInRealizado }.sumOf { it.cashbackGanho }
+    val totalPendente = reservas.filter { !it.checkInRealizado }.sumOf { it.cashbackGanho }
+    val saldoDisponivelFmt = "R$ ${"%.2f".format(if (reservas.isEmpty()) 340.0 else totalConfirmado)}"
+    val saldoPendenteFmt = "R$ ${"%.2f".format(if (reservas.isEmpty()) 92.0 else totalPendente)}"
 
     Column(
         modifier = Modifier
@@ -77,17 +84,17 @@ fun TelaCarteiraCashback(navController: NavController) {
                 colors = CardDefaults.cardColors(containerColor = BrandGreen)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Saldo Disponivel", color = Color.White.copy(alpha = 0.9f), fontSize = 12.sp)
+                    Text("Saldo Dispon\u00EDvel", color = Color.White.copy(alpha = 0.9f), fontSize = 12.sp)
                     Spacer(modifier = Modifier.height(6.dp))
-                    Text(saldoDisponivel, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    Text(saldoDisponivelFmt, color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("Livre para usar ou abater", color = Color.White.copy(alpha = 0.8f), fontSize = 10.sp)
+                    Text("Check-in confirmado", color = Color.White.copy(alpha = 0.8f), fontSize = 10.sp)
                     Spacer(modifier = Modifier.height(8.dp))
                     Button(
                         onClick = {
                             Toast.makeText(
                                 context,
-                                "Solicitacao de resgate Pix de $saldoDisponivel enviada para processamento!",
+                                "Solicita\u00E7\u00E3o de resgate Pix de $saldoDisponivelFmt enviada!",
                                 Toast.LENGTH_LONG
                             ).show()
                         },
@@ -114,9 +121,9 @@ fun TelaCarteiraCashback(navController: NavController) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Saldo Pendente", color = Color(0xFF8E9EB5), fontSize = 12.sp)
                     Spacer(modifier = Modifier.height(6.dp))
-                    Text("R$ 92,00", color = BrandGreen, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                    Text(saldoPendenteFmt, color = BrandGreen, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("Liberado apos o voo", color = Color(0xFF7E8EA4), fontSize = 10.sp)
+                    Text("Liberado ap\u00F3s check-in", color = Color(0xFF7E8EA4), fontSize = 10.sp)
                 }
             }
         }
@@ -133,7 +140,7 @@ fun TelaCarteiraCashback(navController: NavController) {
                 onClick = {
                     Toast.makeText(
                         context,
-                        "Chave Pix cadastrada identificada. Resgate de $saldoDisponivel em analise.",
+                        "Chave Pix identificada. Resgate de $saldoDisponivelFmt em an\u00E1lise.",
                         Toast.LENGTH_LONG
                     ).show()
                 },
@@ -156,7 +163,7 @@ fun TelaCarteiraCashback(navController: NavController) {
         Spacer(modifier = Modifier.height(20.dp))
 
         Text(
-            text = "Historico de Recompensas",
+            text = "Hist\u00F3rico de Recompensas (Room)",
             fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
             color = TextPrimary
@@ -171,10 +178,20 @@ fun TelaCarteiraCashback(navController: NavController) {
             border = BorderStroke(1.dp, BorderColor)
         ) {
             Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)) {
-                TransactionItem("Ontem", "Abatimento compra GRU -> MIA", "-R$ 150,00", "USADO", false)
-                TransactionItem("15 Fev 2026", "Cashback Voo CWB -> GRU", "+R$ 145,00", "RECEBIDO", true)
-                TransactionItem("10 Fev 2026", "Bonus Campanha Miami", "+R$ 120,00", "RECEBIDO", true)
-                TransactionItem("02 Fev 2026", "Resgate via Pix", "-R$ 100,00", "PIX RESGATE", false, isLast = true)
+                if (reservas.isEmpty()) {
+                    TransactionItem("Hoje", "Nenhuma reserva registrada", "R$ 0,00", "VAZIO", false, isLast = true)
+                } else {
+                    reservas.forEachIndexed { index, res ->
+                        TransactionItem(
+                            date = "Reserva ${res.id.take(6).uppercase()}",
+                            title = "Cashback Passageiro: ${res.passageiro}",
+                            amount = "+R$ ${"%.2f".format(res.cashbackGanho)}",
+                            tag = if (res.checkInRealizado) "LIBERADO" else "PENDENTE",
+                            isCredit = res.checkInRealizado,
+                            isLast = index == reservas.lastIndex
+                        )
+                    }
+                }
             }
         }
 
@@ -306,4 +323,5 @@ fun TransactionItem(
 }
 
 @Composable
-fun WalletScreen(navController: androidx.navigation.NavController) = TelaCarteiraCashback(navController)
+fun WalletScreen(navController: NavController, reservas: List<Reserva> = emptyList()) =
+    TelaCarteiraCashback(navController, reservas)

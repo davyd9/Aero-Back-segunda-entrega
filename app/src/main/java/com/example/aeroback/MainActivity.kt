@@ -1,4 +1,4 @@
-﻿package com.example.aeroback
+package com.example.aeroback
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -15,7 +15,6 @@ import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
@@ -25,9 +24,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
@@ -48,68 +49,16 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AeroBackApp() {
     val navController = rememberNavController()
+    val context = LocalContext.current
 
-    val voos = remember {
-        mutableStateListOf(
-            Voo(
-                id = "voo-1",
-                companhia = "LATAM Airlines",
-                origem = "GRU",
-                destino = "MIA",
-                dataIda = "15 Mar 2026",
-                horario = "22:45",
-                precoBase = 2850.0,
-                cashbackPorcento = 12
-            ),
-            Voo(
-                id = "voo-2",
-                companhia = "Gol Linhas Aereas",
-                origem = "CWB",
-                destino = "GIG",
-                dataIda = "20 Mar 2026",
-                horario = "09:15",
-                precoBase = 620.0,
-                cashbackPorcento = 15
-            ),
-            Voo(
-                id = "voo-3",
-                companhia = "Azul Linhas Aereas",
-                origem = "CWB",
-                destino = "GRU",
-                dataIda = "25 Mar 2026",
-                horario = "14:30",
-                precoBase = 490.0,
-                cashbackPorcento = 10
-            )
-        )
-    }
+    val database = remember { AeroBackDatabase.getDatabase(context) }
+    val repository = remember { AeroBackRepository(database.vooDao(), database.reservaDao()) }
+    val aeroViewModel: AeroBackViewModel = viewModel(
+        factory = AeroBackViewModelFactory(repository)
+    )
 
-    val reservas = remember {
-        mutableStateListOf(
-            Reserva(
-                id = "RES-101",
-                vooId = "voo-1",
-                passageiro = "Davyd Molina",
-                assento = "03A (VIP)",
-                bagagemDespachada = true,
-                assentoVip = true,
-                precoFinal = 3080.0,
-                cashbackGanho = 369.60,
-                checkInRealizado = true
-            ),
-            Reserva(
-                id = "RES-102",
-                vooId = "voo-2",
-                passageiro = "Davyd Molina",
-                assento = "14C",
-                bagagemDespachada = false,
-                assentoVip = false,
-                precoFinal = 620.0,
-                cashbackGanho = 93.00,
-                checkInRealizado = false
-            )
-        )
-    }
+    val voos by aeroViewModel.voos.collectAsState()
+    val reservas by aeroViewModel.reservas.collectAsState()
 
     Scaffold(
         bottomBar = {
@@ -122,10 +71,19 @@ fun AeroBackApp() {
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(Rotas.SEARCH) {
-                TelaBuscaVoos(navController = navController)
+                TelaBuscaVoos(
+                    navController = navController,
+                    reservas = reservas
+                )
             }
             composable(Rotas.FLIGHT_LIST) {
-                TelaListaVoos(navController = navController, voos = voos)
+                TelaListaVoos(
+                    navController = navController,
+                    voos = voos,
+                    onAddVoo = { aeroViewModel.adicionarVoo(it) },
+                    onUpdateVoo = { aeroViewModel.atualizarVoo(it) },
+                    onDeleteVoo = { aeroViewModel.removerVoo(it) }
+                )
             }
             composable(
                 route = Rotas.FLIGHT_DETAIL,
@@ -135,7 +93,7 @@ fun AeroBackApp() {
                 TelaDetalhesVoo(
                     flightId = flightId,
                     voos = voos,
-                    reservas = reservas,
+                    onConfirmarReserva = { aeroViewModel.adicionarReserva(it) },
                     navController = navController
                 )
             }
@@ -143,7 +101,10 @@ fun AeroBackApp() {
                 TelaListaReservas(
                     navController = navController,
                     reservas = reservas,
-                    voos = voos
+                    voos = voos,
+                    onAddReserva = { aeroViewModel.adicionarReserva(it) },
+                    onUpdateReserva = { aeroViewModel.atualizarReserva(it) },
+                    onDeleteReserva = { aeroViewModel.removerReserva(it) }
                 )
             }
             composable(
@@ -155,6 +116,8 @@ fun AeroBackApp() {
                     bookingId = bookingId,
                     reservas = reservas,
                     voos = voos,
+                    onUpdateReserva = { aeroViewModel.atualizarReserva(it) },
+                    onDeleteReserva = { aeroViewModel.removerReserva(it) },
                     navController = navController
                 )
             }
@@ -162,7 +125,10 @@ fun AeroBackApp() {
                 TelaRadarPrecos(navController = navController)
             }
             composable(Rotas.WALLET) {
-                TelaCarteiraCashback(navController = navController)
+                TelaCarteiraCashback(
+                    navController = navController,
+                    reservas = reservas
+                )
             }
         }
     }
