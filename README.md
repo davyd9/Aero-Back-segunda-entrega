@@ -139,22 +139,3 @@ Cada um dos dois DAOs (`VooDao` e `ReservaDao`) implementa os **4 métodos CRUD 
 
 * **Configuração do KSP com a versão do Kotlin do projeto:** Inicialmente houve dúvida sobre a compatibilidade entre o processador de anotações e a versão do Kotlin configurada no Gradle (`2.2.10`), além da ordem correta de sincronização do plugin `id("com.google.devtools.ksp")`. Resolvemos alinhando a versão do plugin KSP (`2.2.10-2.0.2`) exatamente com a versão do Kotlin no `build.gradle.kts` raiz, aplicando `id("com.google.devtools.ksp")` no `app/build.gradle.kts` antes da dependência `ksp("androidx.room:room-compiler:$room_version")`.
 * **Carga inicial (*Seed*) sem duplicar dados ao reabrir o app:** Na primeira vez que o app abre, queríamos que já existissem voos de exemplo no banco, mas sem recriá-los caso o usuário deletasse ou editasse itens e fechasse o app. Resolvemos criando a função `AppDatabase.garantirDadosIniciais(context, db)` protegida por `Mutex` e `SharedPreferences`, que popula os registros iniciais no SQLite apenas na primeira execução após a instalação.
-
----
-
-## Checklist de Entrega (Seção 7)
-
-- [x] Novo repositório GitHub criado, com `README.md` explicando como rodar o projeto
-- [x] Documentação do processo e das decisões está no repositório, com prints/vídeo (seção 4)
-- [x] Dependências do Room configuradas (`room-runtime`, `room-ktx`, `ksp("androidx.room:room-compiler:$room_version")`) e o projeto compila sem erro
-- [x] Existem no mínimo 2 `@Entity` (`Voo` e `Reserva`), cada uma com `@PrimaryKey(autoGenerate = true) val id: Int = 0`
-- [x] Existem no mínimo 2 interfaces `@Dao` (`VooDao` e `ReservaDao`), cada uma com `@Insert`, `@Query`, `@Update` e `@Delete` (todos `suspend`)
-- [x] Pelo menos um DAO tem uma consulta filtrada por campo (`buscarPorId(id: Int)` em ambos os DAOs), além do `buscarTodos()`
-- [x] Tela de Detalhes (`TelaDetalhesVoo` e `TelaCartaoEmbarque`) busca o item direto do banco pelo `id` recebido na navegação (seção 3.3)
-- [x] Existe uma classe `AppDatabase` em padrão Singleton (`companion object` + `@Volatile` + `synchronized`)
-- [x] As listas buscam os dados do banco ao abrir a tela com `LaunchedEffect(Unit)` (não mais de uma lista fixa em memória)
-- [x] Adicionar um item pela UI salva de verdade no banco (`dao.inserir(...)`)
-- [x] Editar (atualizar) um item pela UI funciona de verdade e persiste (`dao.atualizar(...)`)
-- [x] Remover um item pela UI apaga de verdade do banco (`dao.deletar(...)`)
-- [x] Testado: adicionar um item, fechar o app, reabrir — o item continua lá
-- [x] Toda operação de banco está dentro de uma Coroutine no `Dispatchers.IO` (`CoroutineScope(Dispatchers.IO).launch { ... }`) com `try/catch` e `Log.e(...)`
