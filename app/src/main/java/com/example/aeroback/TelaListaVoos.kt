@@ -1,5 +1,6 @@
 package com.example.aeroback
 
+import android.util.Log
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -15,21 +16,36 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import java.util.UUID
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+suspend fun buscarVoosDoBanco(vooDao: VooDao): List<Voo> {
+    return try {
+        vooDao.buscarTodos()
+    } catch (e: Exception) {
+        Log.e("TelaListaVoos", "Erro ao buscar voos no Room: ${e.message}", e)
+        emptyList()
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TelaListaVoos(
-    navController: NavController,
-    voos: List<Voo>,
-    onAddVoo: (Voo) -> Unit,
-    onUpdateVoo: (Voo) -> Unit,
-    onDeleteVoo: (Voo) -> Unit
+    navController: NavController
 ) {
+    val context = LocalContext.current
+    val db = remember { AppDatabase.getDatabase(context) }
+    val vooDao = remember { db.vooDao() }
+
+    var voos by remember { mutableStateOf<List<Voo>>(emptyList()) }
+
     var showCreateDialog by remember { mutableStateOf(false) }
     var vooEmEdicao by remember { mutableStateOf<Voo?>(null) }
 
@@ -40,6 +56,20 @@ fun TelaListaVoos(
     var horarioInput by remember { mutableStateOf("14:20") }
     var precoInput by remember { mutableStateOf("") }
     var cashbackInput by remember { mutableStateOf("10") }
+
+    LaunchedEffect(Unit) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                AppDatabase.garantirDadosIniciais(context, db)
+                val listaDoBanco = buscarVoosDoBanco(vooDao)
+                withContext(Dispatchers.Main) {
+                    voos = listaDoBanco
+                }
+            } catch (e: Exception) {
+                Log.e("TelaListaVoos", "Erro no LaunchedEffect ao carregar voos: ${e.message}", e)
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -111,7 +141,7 @@ fun TelaListaVoos(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = voo.companhia,
+                                        text = "${voo.companhia} (#${voo.id})",
                                         fontWeight = FontWeight.Bold,
                                         color = BrandDarkNavy,
                                         fontSize = 15.sp
@@ -171,7 +201,19 @@ fun TelaListaVoos(
                                     }
                                     Spacer(modifier = Modifier.width(8.dp))
                                     IconButton(
-                                        onClick = { onDeleteVoo(voo) },
+                                        onClick = {
+                                            CoroutineScope(Dispatchers.IO).launch {
+                                                try {
+                                                    vooDao.deletar(voo)
+                                                    val atualizados = vooDao.buscarTodos()
+                                                    withContext(Dispatchers.Main) {
+                                                        voos = atualizados
+                                                    }
+                                                } catch (e: Exception) {
+                                                    Log.e("TelaListaVoos", "Erro ao deletar voo: ${e.message}", e)
+                                                }
+                                            }
+                                        },
                                         modifier = Modifier.size(32.dp)
                                     ) {
                                         Icon(
@@ -198,6 +240,8 @@ fun TelaListaVoos(
                     OutlinedTextField(value = companhiaInput, onValueChange = { companhiaInput = it }, label = { Text("Companhia") }, singleLine = true)
                     OutlinedTextField(value = origemInput, onValueChange = { origemInput = it }, label = { Text("Origem (ex: GRU)") }, singleLine = true)
                     OutlinedTextField(value = destinoInput, onValueChange = { destinoInput = it }, label = { Text("Destino (ex: MIA)") }, singleLine = true)
+                    OutlinedTextField(value = dataInput, onValueChange = { dataInput = it }, label = { Text("Data de Ida") }, singleLine = true)
+                    OutlinedTextField(value = horarioInput, onValueChange = { horarioInput = it }, label = { Text("Hor\u00E1rio") }, singleLine = true)
                     OutlinedTextField(value = precoInput, onValueChange = { precoInput = it }, label = { Text("Pre\u00E7o Base (R$)") }, singleLine = true)
                     OutlinedTextField(value = cashbackInput, onValueChange = { cashbackInput = it }, label = { Text("% Cashback") }, singleLine = true)
                 }
@@ -208,19 +252,27 @@ fun TelaListaVoos(
                         val preco = precoInput.replace(",", ".").toDoubleOrNull() ?: 1200.0
                         val cashback = cashbackInput.toIntOrNull() ?: 10
                         if (origemInput.isNotBlank() && destinoInput.isNotBlank()) {
-                            onAddVoo(
-                                Voo(
-                                    id = UUID.randomUUID().toString(),
-                                    companhia = companhiaInput.ifBlank { "AeroBack Linhas" },
-                                    origem = origemInput.uppercase(),
-                                    destino = destinoInput.uppercase(),
-                                    dataIda = dataInput.ifBlank { "18 Nov 2026" },
-                                    horario = horarioInput.ifBlank { "14:20" },
-                                    precoBase = preco,
-                                    cashbackPorcento = cashback
-                                )
+                            val novoVoo = Voo(
+                                companhia = companhiaInput.ifBlank { "AeroBack Linhas" },
+                                origem = origemInput.uppercase(),
+                                destino = destinoInput.uppercase(),
+                                dataIda = dataInput.ifBlank { "18 Nov 2026" },
+                                horario = horarioInput.ifBlank { "14:20" },
+                                precoBase = preco,
+                                cashbackPorcento = cashback
                             )
                             showCreateDialog = false
+                            CoroutineScope(Dispatchers.IO).launch {
+                                try {
+                                    vooDao.inserir(novoVoo)
+                                    val atualizados = vooDao.buscarTodos()
+                                    withContext(Dispatchers.Main) {
+                                        voos = atualizados
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("TelaListaVoos", "Erro ao inserir voo: ${e.message}", e)
+                                }
+                            }
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = BrandGreen)
@@ -238,12 +290,14 @@ fun TelaListaVoos(
         val vooAtual = vooEmEdicao!!
         AlertDialog(
             onDismissRequest = { vooEmEdicao = null },
-            title = { Text("Editar Voo") },
+            title = { Text("Editar Voo #${vooAtual.id}") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(value = companhiaInput, onValueChange = { companhiaInput = it }, label = { Text("Companhia") }, singleLine = true)
                     OutlinedTextField(value = origemInput, onValueChange = { origemInput = it }, label = { Text("Origem") }, singleLine = true)
                     OutlinedTextField(value = destinoInput, onValueChange = { destinoInput = it }, label = { Text("Destino") }, singleLine = true)
+                    OutlinedTextField(value = dataInput, onValueChange = { dataInput = it }, label = { Text("Data de Ida") }, singleLine = true)
+                    OutlinedTextField(value = horarioInput, onValueChange = { horarioInput = it }, label = { Text("Hor\u00E1rio") }, singleLine = true)
                     OutlinedTextField(value = precoInput, onValueChange = { precoInput = it }, label = { Text("Pre\u00E7o Base (R$)") }, singleLine = true)
                     OutlinedTextField(value = cashbackInput, onValueChange = { cashbackInput = it }, label = { Text("% Cashback") }, singleLine = true)
                 }
@@ -253,16 +307,27 @@ fun TelaListaVoos(
                     onClick = {
                         val preco = precoInput.replace(",", ".").toDoubleOrNull() ?: vooAtual.precoBase
                         val cashback = cashbackInput.toIntOrNull() ?: vooAtual.cashbackPorcento
-                        onUpdateVoo(
-                            vooAtual.copy(
-                                companhia = companhiaInput.ifBlank { vooAtual.companhia },
-                                origem = origemInput.uppercase().ifBlank { vooAtual.origem },
-                                destino = destinoInput.uppercase().ifBlank { vooAtual.destino },
-                                precoBase = preco,
-                                cashbackPorcento = cashback
-                            )
+                        val vooEditado = vooAtual.copy(
+                            companhia = companhiaInput.ifBlank { vooAtual.companhia },
+                            origem = origemInput.uppercase().ifBlank { vooAtual.origem },
+                            destino = destinoInput.uppercase().ifBlank { vooAtual.destino },
+                            dataIda = dataInput.ifBlank { vooAtual.dataIda },
+                            horario = horarioInput.ifBlank { vooAtual.horario },
+                            precoBase = preco,
+                            cashbackPorcento = cashback
                         )
                         vooEmEdicao = null
+                        CoroutineScope(Dispatchers.IO).launch {
+                            try {
+                                vooDao.atualizar(vooEditado)
+                                val atualizados = vooDao.buscarTodos()
+                                withContext(Dispatchers.Main) {
+                                    voos = atualizados
+                                }
+                            } catch (e: Exception) {
+                                Log.e("TelaListaVoos", "Erro ao atualizar voo: ${e.message}", e)
+                            }
+                        }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = BrandGreen)
                 ) {

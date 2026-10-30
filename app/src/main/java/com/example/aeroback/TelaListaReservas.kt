@@ -1,5 +1,6 @@
 package com.example.aeroback
 
+import android.util.Log
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -15,28 +16,60 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import java.util.UUID
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+suspend fun buscarReservasDoBanco(reservaDao: ReservaDao): List<Reserva> {
+    return try {
+        reservaDao.buscarTodos()
+    } catch (e: Exception) {
+        Log.e("TelaListaReservas", "Erro ao buscar reservas no Room: ${e.message}", e)
+        emptyList()
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TelaListaReservas(
-    navController: NavController,
-    reservas: List<Reserva>,
-    voos: List<Voo>,
-    onAddReserva: (Reserva) -> Unit,
-    onUpdateReserva: (Reserva) -> Unit,
-    onDeleteReserva: (Reserva) -> Unit
+    navController: NavController
 ) {
+    val context = LocalContext.current
+    val db = remember { AppDatabase.getDatabase(context) }
+    val reservaDao = remember { db.reservaDao() }
+    val vooDao = remember { db.vooDao() }
+
+    var reservas by remember { mutableStateOf<List<Reserva>>(emptyList()) }
+    var voos by remember { mutableStateOf<List<Voo>>(emptyList()) }
+
     var showCreateDialog by remember { mutableStateOf(false) }
     var reservaEmEdicao by remember { mutableStateOf<Reserva?>(null) }
 
     var passageiroInput by remember { mutableStateOf("") }
     var assentoInput by remember { mutableStateOf("08B") }
     var bagagemInput by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                AppDatabase.garantirDadosIniciais(context, db)
+                val listaReservasBanco = buscarReservasDoBanco(reservaDao)
+                val listaVoosBanco = vooDao.buscarTodos()
+                withContext(Dispatchers.Main) {
+                    reservas = listaReservasBanco
+                    voos = listaVoosBanco
+                }
+            } catch (e: Exception) {
+                Log.e("TelaListaReservas", "Erro ao carregar reservas no LaunchedEffect: ${e.message}", e)
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -111,7 +144,8 @@ fun TelaListaReservas(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = vooCorrespondente?.let { "${it.origem} \u2794 ${it.destino}" } ?: "Voo AeroBack",
+                                        text = vooCorrespondente?.let { "${it.origem} \u2794 ${it.destino} (Reserva #${reserva.id})" }
+                                            ?: "Voo AeroBack (Reserva #${reserva.id})",
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 16.sp,
                                         color = TextPrimary
@@ -147,7 +181,17 @@ fun TelaListaReservas(
                                         Checkbox(
                                             checked = reserva.checkInRealizado,
                                             onCheckedChange = { checked ->
-                                                onUpdateReserva(reserva.copy(checkInRealizado = checked))
+                                                CoroutineScope(Dispatchers.IO).launch {
+                                                    try {
+                                                        reservaDao.atualizar(reserva.copy(checkInRealizado = checked))
+                                                        val atualizadas = reservaDao.buscarTodos()
+                                                        withContext(Dispatchers.Main) {
+                                                            reservas = atualizadas
+                                                        }
+                                                    } catch (e: Exception) {
+                                                        Log.e("TelaListaReservas", "Erro ao atualizar check-in: ${e.message}", e)
+                                                    }
+                                                }
                                             }
                                         )
                                         Text("Realizar Check-in", fontSize = 12.sp, color = TextPrimary)
@@ -167,7 +211,19 @@ fun TelaListaReservas(
                                         }
                                         Spacer(modifier = Modifier.width(4.dp))
                                         IconButton(
-                                            onClick = { onDeleteReserva(reserva) },
+                                            onClick = {
+                                                CoroutineScope(Dispatchers.IO).launch {
+                                                    try {
+                                                        reservaDao.deletar(reserva)
+                                                        val atualizadas = reservaDao.buscarTodos()
+                                                        withContext(Dispatchers.Main) {
+                                                            reservas = atualizadas
+                                                        }
+                                                    } catch (e: Exception) {
+                                                        Log.e("TelaListaReservas", "Erro ao deletar reserva: ${e.message}", e)
+                                                    }
+                                                }
+                                            },
                                             modifier = Modifier.size(32.dp)
                                         ) {
                                             Icon(Icons.Default.Delete, contentDescription = "Cancelar Reserva", tint = Color.Red.copy(alpha = 0.7f))
@@ -204,20 +260,28 @@ fun TelaListaReservas(
                             val precoBase = vooPadrao?.precoBase ?: 850.0
                             val pct = vooPadrao?.cashbackPorcento ?: 10
                             val precoFinal = precoBase + if (bagagemInput) 150.0 else 0.0
-                            onAddReserva(
-                                Reserva(
-                                    id = UUID.randomUUID().toString(),
-                                    vooId = vooPadrao?.id ?: "voo-1",
-                                    passageiro = passageiroInput,
-                                    assento = assentoInput.ifBlank { "10A" },
-                                    bagagemDespachada = bagagemInput,
-                                    assentoVip = false,
-                                    precoFinal = precoFinal,
-                                    cashbackGanho = precoFinal * (pct / 100.0),
-                                    checkInRealizado = false
-                                )
+                            val novaReserva = Reserva(
+                                vooId = vooPadrao?.id ?: 1,
+                                passageiro = passageiroInput,
+                                assento = assentoInput.ifBlank { "10A" },
+                                bagagemDespachada = bagagemInput,
+                                assentoVip = false,
+                                precoFinal = precoFinal,
+                                cashbackGanho = precoFinal * (pct / 100.0),
+                                checkInRealizado = false
                             )
                             showCreateDialog = false
+                            CoroutineScope(Dispatchers.IO).launch {
+                                try {
+                                    reservaDao.inserir(novaReserva)
+                                    val atualizadas = reservaDao.buscarTodos()
+                                    withContext(Dispatchers.Main) {
+                                        reservas = atualizadas
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("TelaListaReservas", "Erro ao inserir reserva: ${e.message}", e)
+                                }
+                            }
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = BrandGreen)
@@ -235,7 +299,7 @@ fun TelaListaReservas(
         val atual = reservaEmEdicao!!
         AlertDialog(
             onDismissRequest = { reservaEmEdicao = null },
-            title = { Text("Editar Reserva") },
+            title = { Text("Editar Reserva #${atual.id}") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(value = passageiroInput, onValueChange = { passageiroInput = it }, label = { Text("Nome do Passageiro") }, singleLine = true)
@@ -249,14 +313,23 @@ fun TelaListaReservas(
             confirmButton = {
                 Button(
                     onClick = {
-                        onUpdateReserva(
-                            atual.copy(
-                                passageiro = passageiroInput.ifBlank { atual.passageiro },
-                                assento = assentoInput.ifBlank { atual.assento },
-                                bagagemDespachada = bagagemInput
-                            )
+                        val reservaEditada = atual.copy(
+                            passageiro = passageiroInput.ifBlank { atual.passageiro },
+                            assento = assentoInput.ifBlank { atual.assento },
+                            bagagemDespachada = bagagemInput
                         )
                         reservaEmEdicao = null
+                        CoroutineScope(Dispatchers.IO).launch {
+                            try {
+                                reservaDao.atualizar(reservaEditada)
+                                val atualizadas = reservaDao.buscarTodos()
+                                withContext(Dispatchers.Main) {
+                                    reservas = atualizadas
+                                }
+                            } catch (e: Exception) {
+                                Log.e("TelaListaReservas", "Erro ao atualizar reserva: ${e.message}", e)
+                            }
+                        }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = BrandGreen)
                 ) {

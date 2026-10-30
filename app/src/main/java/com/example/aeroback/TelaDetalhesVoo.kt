@@ -1,5 +1,6 @@
 package com.example.aeroback
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -10,25 +11,58 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import java.util.UUID
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TelaDetalhesVoo(
-    flightId: String,
-    voos: List<Voo>,
-    onConfirmarReserva: (Reserva) -> Unit,
+    flightId: Int,
     navController: NavController
 ) {
-    val voo = voos.find { it.id == flightId }
+    val context = LocalContext.current
+    val db = remember { AppDatabase.getDatabase(context) }
+    val vooDao = remember { db.vooDao() }
+    val reservaDao = remember { db.reservaDao() }
 
-    if (voo == null) {
+    var voo by remember { mutableStateOf<Voo?>(null) }
+    var carregando by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val vooDoBanco = vooDao.buscarPorId(flightId)
+                withContext(Dispatchers.Main) {
+                    voo = vooDoBanco
+                    carregando = false
+                }
+            } catch (e: Exception) {
+                Log.e("TelaDetalhesVoo", "Erro ao buscar voo por id ($flightId): ${e.message}", e)
+                withContext(Dispatchers.Main) {
+                    carregando = false
+                }
+            }
+        }
+    }
+
+    if (carregando) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Voo n\u00E3o encontrado.")
+            CircularProgressIndicator(color = BrandGreen)
+        }
+        return
+    }
+
+    val vooSelecionado = voo
+    if (vooSelecionado == null) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Voo #$flightId n\u00E3o encontrado no banco Room.")
         }
         return
     }
@@ -39,8 +73,8 @@ fun TelaDetalhesVoo(
 
     val valorBagagem = if (addBagagem) 150.0 else 0.0
     val valorAssento = if (addAssentoVip) 80.0 else 0.0
-    val valorTotalCalculado = voo.precoBase + valorBagagem + valorAssento
-    val cashbackTotalCalculado = valorTotalCalculado * (voo.cashbackPorcento / 100.0)
+    val valorTotalCalculado = vooSelecionado.precoBase + valorBagagem + valorAssento
+    val cashbackTotalCalculado = valorTotalCalculado * (vooSelecionado.cashbackPorcento / 100.0)
 
     Scaffold(
         topBar = {
@@ -72,12 +106,12 @@ fun TelaDetalhesVoo(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(voo.companhia, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        Text("+${voo.cashbackPorcento}% Cashback", color = BrandGreen, fontWeight = FontWeight.Bold)
+                        Text("${vooSelecionado.companhia} (#${vooSelecionado.id})", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text("+${vooSelecionado.cashbackPorcento}% Cashback", color = BrandGreen, fontWeight = FontWeight.Bold)
                     }
                     Spacer(modifier = Modifier.height(10.dp))
-                    Text("${voo.origem} \u2794 ${voo.destino}", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text("Hor\u00E1rio: ${voo.horario} \u2022 Data: ${voo.dataIda}", color = Color(0xFF8E9EB5), fontSize = 13.sp)
+                    Text("${vooSelecionado.origem} \u2794 ${vooSelecionado.destino}", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text("Hor\u00E1rio: ${vooSelecionado.horario} \u2022 Data: ${vooSelecionado.dataIda}", color = Color(0xFF8E9EB5), fontSize = 13.sp)
                 }
             }
 
@@ -134,7 +168,7 @@ fun TelaDetalhesVoo(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text("Pre\u00E7o Base:", color = TextSecondary, fontSize = 13.sp)
-                        Text("R$ ${"%.2f".format(voo.precoBase)}", color = TextPrimary, fontSize = 13.sp)
+                        Text("R$ ${"%.2f".format(vooSelecionado.precoBase)}", color = TextPrimary, fontSize = 13.sp)
                     }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -166,8 +200,7 @@ fun TelaDetalhesVoo(
             Button(
                 onClick = {
                     val novaReserva = Reserva(
-                        id = UUID.randomUUID().toString(),
-                        vooId = voo.id,
+                        vooId = vooSelecionado.id,
                         passageiro = nomePassageiro.ifBlank { "Davyd Molina" },
                         assento = if (addAssentoVip) "03A (VIP)" else "14C",
                         bagagemDespachada = addBagagem,
@@ -176,8 +209,16 @@ fun TelaDetalhesVoo(
                         cashbackGanho = cashbackTotalCalculado,
                         checkInRealizado = false
                     )
-                    onConfirmarReserva(novaReserva)
-                    navController.navigate(Rotas.BOOKING_LIST)
+                    CoroutineScope(Dispatchers.IO).launch {
+                        try {
+                            reservaDao.inserir(novaReserva)
+                            withContext(Dispatchers.Main) {
+                                navController.navigate(Rotas.BOOKING_LIST)
+                            }
+                        } catch (e: Exception) {
+                            Log.e("TelaDetalhesVoo", "Erro ao inserir reserva no Room: ${e.message}", e)
+                        }
+                    }
                 },
                 modifier = Modifier
                     .fillMaxWidth()

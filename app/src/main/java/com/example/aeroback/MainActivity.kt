@@ -24,11 +24,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
@@ -49,16 +47,6 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AeroBackApp() {
     val navController = rememberNavController()
-    val context = LocalContext.current
-
-    val database = remember { AeroBackDatabase.getDatabase(context) }
-    val repository = remember { AeroBackRepository(database.vooDao(), database.reservaDao()) }
-    val aeroViewModel: AeroBackViewModel = viewModel(
-        factory = AeroBackViewModelFactory(repository)
-    )
-
-    val voos by aeroViewModel.voos.collectAsState()
-    val reservas by aeroViewModel.reservas.collectAsState()
 
     Scaffold(
         bottomBar = {
@@ -71,53 +59,31 @@ fun AeroBackApp() {
             modifier = Modifier.padding(innerPadding)
         ) {
             composable(Rotas.SEARCH) {
-                TelaBuscaVoos(
-                    navController = navController,
-                    reservas = reservas
-                )
+                TelaBuscaVoos(navController = navController)
             }
             composable(Rotas.FLIGHT_LIST) {
-                TelaListaVoos(
-                    navController = navController,
-                    voos = voos,
-                    onAddVoo = { aeroViewModel.adicionarVoo(it) },
-                    onUpdateVoo = { aeroViewModel.atualizarVoo(it) },
-                    onDeleteVoo = { aeroViewModel.removerVoo(it) }
-                )
+                TelaListaVoos(navController = navController)
             }
             composable(
                 route = Rotas.FLIGHT_DETAIL,
-                arguments = listOf(navArgument("flightId") { type = NavType.StringType })
+                arguments = listOf(navArgument("flightId") { type = NavType.IntType })
             ) { backStackEntry ->
-                val flightId = backStackEntry.arguments?.getString("flightId") ?: ""
+                val flightId = backStackEntry.arguments?.getInt("flightId") ?: 0
                 TelaDetalhesVoo(
                     flightId = flightId,
-                    voos = voos,
-                    onConfirmarReserva = { aeroViewModel.adicionarReserva(it) },
                     navController = navController
                 )
             }
             composable(Rotas.BOOKING_LIST) {
-                TelaListaReservas(
-                    navController = navController,
-                    reservas = reservas,
-                    voos = voos,
-                    onAddReserva = { aeroViewModel.adicionarReserva(it) },
-                    onUpdateReserva = { aeroViewModel.atualizarReserva(it) },
-                    onDeleteReserva = { aeroViewModel.removerReserva(it) }
-                )
+                TelaListaReservas(navController = navController)
             }
             composable(
                 route = Rotas.BOOKING_DETAIL,
-                arguments = listOf(navArgument("bookingId") { type = NavType.StringType })
+                arguments = listOf(navArgument("bookingId") { type = NavType.IntType })
             ) { backStackEntry ->
-                val bookingId = backStackEntry.arguments?.getString("bookingId") ?: ""
+                val bookingId = backStackEntry.arguments?.getInt("bookingId") ?: 0
                 TelaCartaoEmbarque(
                     bookingId = bookingId,
-                    reservas = reservas,
-                    voos = voos,
-                    onUpdateReserva = { aeroViewModel.atualizarReserva(it) },
-                    onDeleteReserva = { aeroViewModel.removerReserva(it) },
                     navController = navController
                 )
             }
@@ -125,10 +91,7 @@ fun AeroBackApp() {
                 TelaRadarPrecos(navController = navController)
             }
             composable(Rotas.WALLET) {
-                TelaCarteiraCashback(
-                    navController = navController,
-                    reservas = reservas
-                )
+                TelaCarteiraCashback(navController = navController)
             }
         }
     }

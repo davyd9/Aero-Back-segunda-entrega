@@ -9,6 +9,6 @@ object Rotas {
     const val BOOKING_LIST = "booking_list"
     const val BOOKING_DETAIL = "booking_detail/{bookingId}"
 
-    fun flightDetail(flightId: String) = "flight_detail/$flightId"
-    fun bookingDetail(bookingId: String) = "booking_detail/$bookingId"
+    fun flightDetail(flightId: Int) = "flight_detail/$flightId"
+    fun bookingDetail(bookingId: Int) = "booking_detail/$bookingId"
 }

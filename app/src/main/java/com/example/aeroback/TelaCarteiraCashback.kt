@@ -1,5 +1,6 @@
 package com.example.aeroback
 
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -25,19 +26,40 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun TelaCarteiraCashback(
-    navController: NavController,
-    reservas: List<Reserva> = emptyList()
+    navController: NavController
 ) {
     val scrollState = rememberScrollState()
     val context = LocalContext.current
+    val db = remember { AppDatabase.getDatabase(context) }
+    val reservaDao = remember { db.reservaDao() }
+
+    var reservas by remember { mutableStateOf<List<Reserva>>(emptyList()) }
+
+    LaunchedEffect(Unit) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                AppDatabase.garantirDadosIniciais(context, db)
+                val reservasBanco = reservaDao.buscarTodos()
+                withContext(Dispatchers.Main) {
+                    reservas = reservasBanco
+                }
+            } catch (e: Exception) {
+                Log.e("TelaCarteiraCashback", "Erro ao buscar reservas no Room: ${e.message}", e)
+            }
+        }
+    }
 
     val totalConfirmado = reservas.filter { it.checkInRealizado }.sumOf { it.cashbackGanho }
     val totalPendente = reservas.filter { !it.checkInRealizado }.sumOf { it.cashbackGanho }
-    val saldoDisponivelFmt = "R$ ${"%.2f".format(if (reservas.isEmpty()) 340.0 else totalConfirmado)}"
-    val saldoPendenteFmt = "R$ ${"%.2f".format(if (reservas.isEmpty()) 92.0 else totalPendente)}"
+    val saldoDisponivelFmt = "R$ ${"%.2f".format(totalConfirmado)}"
+    val saldoPendenteFmt = "R$ ${"%.2f".format(totalPendente)}"
 
     Column(
         modifier = Modifier
@@ -183,7 +205,7 @@ fun TelaCarteiraCashback(
                 } else {
                     reservas.forEachIndexed { index, res ->
                         TransactionItem(
-                            date = "Reserva ${res.id.take(6).uppercase()}",
+                            date = "Reserva #${res.id} (Voo #${res.vooId})",
                             title = "Cashback Passageiro: ${res.passageiro}",
                             amount = "+R$ ${"%.2f".format(res.cashbackGanho)}",
                             tag = if (res.checkInRealizado) "LIBERADO" else "PENDENTE",
@@ -323,5 +345,4 @@ fun TransactionItem(
 }
 
 @Composable
-fun WalletScreen(navController: NavController, reservas: List<Reserva> = emptyList()) =
-    TelaCarteiraCashback(navController, reservas)
+fun WalletScreen(navController: NavController) = TelaCarteiraCashback(navController)

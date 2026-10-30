@@ -1,5 +1,6 @@
 package com.example.aeroback
 
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -26,12 +27,35 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun TelaBuscaVoos(
-    navController: NavController,
-    reservas: List<Reserva> = emptyList()
+    navController: NavController
 ) {
+    val context = LocalContext.current
+    val db = remember { AppDatabase.getDatabase(context) }
+    val reservaDao = remember { db.reservaDao() }
+
+    var reservas by remember { mutableStateOf<List<Reserva>>(emptyList()) }
+
+    LaunchedEffect(Unit) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                AppDatabase.garantirDadosIniciais(context, db)
+                val reservasBanco = reservaDao.buscarTodos()
+                withContext(Dispatchers.Main) {
+                    reservas = reservasBanco
+                }
+            } catch (e: Exception) {
+                Log.e("TelaBuscaVoos", "Erro ao buscar reservas no Room: ${e.message}", e)
+            }
+        }
+    }
+
     var tripType by remember { mutableStateOf("Ida e Volta") }
     var origem by remember { mutableStateOf("Curitiba (CWB)") }
     var destino by remember { mutableStateOf("Miami (MIA)") }
@@ -43,10 +67,9 @@ fun TelaBuscaVoos(
     var dialogPassageirosAberto by remember { mutableStateOf(false) }
 
     val scrollState = rememberScrollState()
-    val context = LocalContext.current
 
     val cashbackAcumuladoRoom = reservas.sumOf { it.cashbackGanho }
-    val saldoExibido = if (reservas.isNotEmpty()) cashbackAcumuladoRoom else 340.0
+    val saldoExibido = cashbackAcumuladoRoom
 
     if (dialogDataAbertaPara != null) {
         val tipoData = dialogDataAbertaPara ?: "Ida"
@@ -399,7 +422,7 @@ fun TelaBuscaVoos(
                                     lineTo(w * 0.35f, h * 0.85f)
                                 }
                                 drawPath(path1, TextPrimary, style = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
-                                drawPath(path2, TextPrimary, style = Stroke(width = 1.8.dp.toPx(), cap = StrokeJoin.Round.let { StrokeCap.Round }, join = StrokeJoin.Round))
+                                drawPath(path2, TextPrimary, style = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round))
                             }
                         }
                     }
@@ -557,5 +580,4 @@ fun TelaBuscaVoos(
 }
 
 @Composable
-fun SearchScreen(navController: NavController, reservas: List<Reserva> = emptyList()) =
-    TelaBuscaVoos(navController, reservas)
+fun SearchScreen(navController: NavController) = TelaBuscaVoos(navController)

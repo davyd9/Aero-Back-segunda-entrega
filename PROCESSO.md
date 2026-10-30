@@ -1,37 +1,46 @@
-# Trabalho 3 â€” PersistÃªncia de Dados com Room (AeroBack)
+# Trabalho 3 — Persistência de Dados com Room (AeroBack)
 
-**Aluno:** Davyd Eduardo Ferreira Molina
-
----
-
-## 1. VisÃ£o Geral da EvoluÃ§Ã£o
-Nesta terceira entrega do projeto **AeroBack**, as listas volÃ¡teis em memÃ³ria (`mutableStateListOf`) foram substituÃ­das pela persistÃªncia relacional local utilizando o **Android Room (SQLite)** integrado com **Kotlin Coroutines**, **Flow/StateFlow** e **ViewModel**.
+**Integrantes:**
+- Davyd Eduardo Ferreira Molina (RA: 42284805)
+- Guilherme Brunetti (RA: 042261015)
 
 ---
 
-## 2. Estrutura TÃ©cnica Implementada
+## 1. Visão Geral da Evolução (Trabalho 2 ➔ Trabalho 3)
+Nesta terceira entrega do projeto **AeroBack**, substituímos as listas voláteis em memória (`mutableStateListOf`) pela persistência local no SQLite utilizando o **Android Jetpack Room** com **KSP**, **Coroutines (`Dispatchers.IO`)** e **`LaunchedEffect(Unit)`**, mantendo as 7 telas e o fluxo de navegação do Trabalho 2.
+
+---
+
+## 2. Estrutura Técnica do Room Implementada
 
 ### 2.1 Entidades Room (`ModelosDados.kt`)
-Foram modeladas duas tabelas relacionais principais no banco local:
-- **`Voo` (`@Entity(tableName = "voos")`)**: Armazena o identificador Ãºnico (`@PrimaryKey val id: String`), companhia aÃ©rea, origem, destino, data de ida, horÃ¡rio, preÃ§o base e percentual de cashback.
-- **`Reserva` (`@Entity(tableName = "reservas")`)**: Armazena o identificador Ãºnico (`@PrimaryKey val id: String`), referÃªncia ao voo (`vooId`), nome do passageiro, assento, opcionais de bagagem despachada e assento VIP, preÃ§o final calculado, cashback ganho e status de check-in (`checkInRealizado`).
+As duas `data class` do Trabalho 2 foram adaptadas para entidades do Room com chave primária autogerada (`Int`):
+- **`Voo` (`@Entity(tableName = "voos")`)**:
+  - `@PrimaryKey(autoGenerate = true) val id: Int = 0`
+  - `companhia`, `origem`, `destino`, `dataIda`, `horario`, `precoBase`, `cashbackPorcento`
+- **`Reserva` (`@Entity(tableName = "reservas")`)**:
+  - `@PrimaryKey(autoGenerate = true) val id: Int = 0`
+  - `vooId: Int`, `passageiro`, `assento`, `bagagemDespachada`, `assentoVip`, `precoFinal`, `cashbackGanho`, `checkInRealizado`
 
-### 2.2 DAOs e OperaÃ§Ãµes CRUD (`BancoDadosRoom.kt`)
+### 2.2 Interfaces `@Dao` (`BancoDadosRoom.kt`)
+Todas as operações são `suspend fun` e executadas fora da Main Thread:
 - **`VooDao` (`@Dao`)**:
-  - `listarVoos(): Flow<List<Voo>>`: Consulta reativa (`@Query`) que emite automaticamente atualizaÃ§Ãµes para a UI sempre que a tabela `voos` sofre alteraÃ§Ãµes.
-  - `inserirVoo` / `inserirListaVoos` (`@Insert(onConflict = OnConflictStrategy.REPLACE)`): CriaÃ§Ã£o de novos voos e carga inicial (*seed*).
-  - `atualizarVoo` (`@Update`): EdiÃ§Ã£o de dados de voos existentes.
-  - `deletarVoo` (`@Delete`): ExclusÃ£o permanente de voos.
+  - `@Insert suspend fun inserir(voo: Voo)`
+  - `@Query("SELECT * FROM voos ORDER BY id ASC") suspend fun buscarTodos(): List<Voo>`
+  - `@Query("SELECT * FROM voos WHERE id = :id") suspend fun buscarPorId(id: Int): Voo?`
+  - `@Update suspend fun atualizar(voo: Voo)`
+  - `@Delete suspend fun deletar(voo: Voo)`
 - **`ReservaDao` (`@Dao`)**:
-  - `listarReservas(): Flow<List<Reserva>>`: Consulta reativa (`@Query`) para listagem de reservas e cÃ¡lculo em tempo real da carteira de cashback.
-  - `inserirReserva` / `inserirListaReservas` (`@Insert`): PersistÃªncia de reservas originadas tanto da tela de detalhes do voo quanto da emissÃ£o manual.
-  - `atualizarReserva` (`@Update`): AtualizaÃ§Ã£o do status de check-in e ediÃ§Ã£o dos dados do passageiro/assento/bagagem.
-  - `deletarReserva` (`@Delete`): Cancelamento e remoÃ§Ã£o da reserva do banco local.
+  - `@Insert suspend fun inserir(reserva: Reserva)`
+  - `@Query("SELECT * FROM reservas ORDER BY id DESC") suspend fun buscarTodos(): List<Reserva>`
+  - `@Query("SELECT * FROM reservas WHERE id = :id") suspend fun buscarPorId(id: Int): Reserva?`
+  - `@Update suspend fun atualizar(reserva: Reserva)`
+  - `@Delete suspend fun deletar(reserva: Reserva)`
 
-### 2.3 ConfiguraÃ§Ã£o do Banco (`AeroBackDatabase`)
-- Implementado utilizando o padrÃ£o **Singleton thread-safe** (`@Volatile` + `synchronized`) sobre `RoomDatabase`, garantindo uma Ãºnica instÃ¢ncia do arquivo `aeroback_database.db` durante todo o ciclo de vida do aplicativo.
+### 2.3 Banco de Dados Singleton (`AppDatabase`)
+- Classe abstrata `AppDatabase : RoomDatabase()` anotada com `@Database(entities = [Voo::class, Reserva::class], version = 1)`.
+- Segue o padrão **Singleton** visto em aula (`companion object`, `@Volatile private var INSTANCE` e bloco `synchronized(this)` com `Room.databaseBuilder`).
 
-### 2.4 Gerenciamento de Estado e Arquitetura (`AeroBackViewModel.kt`)
-- **`AeroBackRepository`**: Isola o acesso aos DAOs da camada de apresentaÃ§Ã£o.
-- **`AeroBackViewModel`**: Converte os `Flow` do Room em `StateFlow` via `stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())` e executa todas as escritas (`Insert`, `Update`, `Delete`) de forma assÃ­ncrona dentro de `viewModelScope.launch`.
-- **PrÃ©-populaÃ§Ã£o automÃ¡tica (*Seed*)**: No bloco `init`, o ViewModel verifica se o banco estÃ¡ vazio (`contarVoos() == 0`) e insere os registros iniciais apenas na primeira execuÃ§Ã£o.
+### 2.4 Operações CRUD nas Telas e Busca por ID nos Detalhes
+- **Listas (`TelaListaVoos.kt` e `TelaListaReservas.kt`)**: Ao abrir a tela, um `LaunchedEffect(Unit)` chama `dao.buscarTodos()` dentro de `CoroutineScope(Dispatchers.IO).launch` com `try/catch` e `Log.e(...)`. Os botões e diálogos de adicionar, editar e remover chamam `dao.inserir(...)`, `dao.atualizar(...)` e `dao.deletar(...)` no `Dispatchers.IO` e atualizam a lista exibida.
+- **Telas de Detalhes (`TelaDetalhesVoo.kt` e `TelaCartaoEmbarque.kt`)**: Recebem apenas o `id: Int` pela rota de navegação (`NavType.IntType`) e buscam o registro diretamente no banco SQLite via `vooDao.buscarPorId(flightId)` e `reservaDao.buscarPorId(bookingId)` dentro de `LaunchedEffect(Unit)`.
