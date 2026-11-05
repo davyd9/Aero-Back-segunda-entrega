@@ -19,8 +19,8 @@ Toda lógica de acesso a banco, `CoroutineScope` e estados soltos em `remember` 
 ### 2.1 Camada de Dados Local (`com.example.aeroback.data`)
 - **Entidades Room (`Voo.kt` e `Reserva.kt`)**: Mantidas com o mesmo esquema SQLite (`voos` e `reservas`, `version = 1`) e `@PrimaryKey(autoGenerate = true) val id: Int = 0`.
 - **DAOs Reativos (`VooDao.kt` e `ReservaDao.kt`)**:
-  - `buscarTodos(): Flow<List<Voo>>` / `listarVoos(): Flow<List<Voo>>` (sem `suspend`, emitindo atualizações automáticas do Room sempre que a tabela `voos` sofre alterações).
-  - `buscarTodos(): Flow<List<Reserva>>` / `listarReservas(): Flow<List<Reserva>>` (sem `suspend`, emitindo atualizações automáticas da tabela `reservas`).
+  - `buscarTodos(): Flow<List<Voo>>` (sem `suspend`, emitindo atualizações automáticas do Room sempre que a tabela `voos` sofre alterações).
+  - `buscarTodos(): Flow<List<Reserva>>` (sem `suspend`, emitindo atualizações automáticas da tabela `reservas`).
   - Operações pontuais `suspend`: `buscarPorId`, `contarVoos` / `contarReservas`, `inserir`, `inserirLista`, `atualizar` e `deletar`.
 - **Database Singleton (`AeroBackDatabase.kt`)**: Implementação thread-safe com `@Volatile` e `synchronized(this)` apontando para `aeroback_room_v1.db`.
 
@@ -63,7 +63,7 @@ Toda lógica de acesso a banco, `CoroutineScope` e estados soltos em `remember` 
    Escolhemos esses campos para eliminar estados `remember` espalhados nas telas e garantir que a UI seja função pura de um único estado imutável sobrevivente a mudanças de configuração.
 
 5. **Alguma funcionalidade quebrou durante a reorganização? Como encontraram e corrigiram?**
-   Sim: (a) a inicialização simultânea dos dois ViewModels podia gerar corrida no *seed* inicial dos voos e reservas — resolvemos sincronizando a checagem `contarVoos() == 0` / `contarReservas() == 0` com `Mutex`; (b) as telas de detalhes piscavam o item anterior no primeiro frame antes do `LaunchedEffect(id)` — resolvemos controlando `idVooCarregado` e `idReservaCarregada` no `UiState`; e (c) o botão de check-in no Cartão de Embarque precisava atualizar tanto a lista geral quanto `reservaSelecionada` — resolvemos recarregando `reservaSelecionada` no `ReservaViewModel` após `atualizarReserva`.
+   Sim: (a) a inicialização simultânea dos dois ViewModels podia gerar corrida no *seed* inicial (e recriar itens caso todos fossem excluídos) — resolvemos sincronizando `garantirSeedInicial()` com `Mutex` e marcando a carga inicial concluída em `SharedPreferences` nos repositórios; (b) as telas de detalhes piscavam o item anterior no primeiro frame antes do `LaunchedEffect(id)` — resolvemos controlando `idVooCarregado` e `idReservaCarregada` no `UiState`; e (c) o botão de check-in no Cartão de Embarque precisava atualizar tanto a lista geral quanto `reservaSelecionada` — resolvemos recarregando `reservaSelecionada` no `ReservaViewModel` após `atualizarReserva`.
 
 6. **Algum integrante teve dificuldade em algum ponto? Como resolveram?**
    A principal dificuldade foi configurar a injeção de múltiplos repositórios no `ReservaViewModel` (que depende de `ReservaRepository` e `VooRepository`) usando `ViewModelProvider.Factory`, além de diferenciar métodos `Flow` contínuos (sem `suspend`) de operações de escrita `suspend fun` no `@Dao`. Resolvemos criando fábricas dedicadas (`VooViewModelFactory` e `ReservaViewModelFactory`) conectadas ao `viewModel(factory = ...)` do `lifecycle-viewmodel-compose` e revisando a coleta reativa dentro do `viewModelScope.launch`.

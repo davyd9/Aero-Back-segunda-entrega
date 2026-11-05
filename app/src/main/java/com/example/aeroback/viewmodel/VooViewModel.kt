@@ -24,11 +24,9 @@ class VooViewModel(
             _uiState.update { it.copy(isLoading = true, erro = null) }
             try {
                 VooRepository.seedMutex.withLock {
-                    if (repository.contarVoos() == 0) {
-                        repository.inserirListaVoos(VooRepository.voosPadrao())
-                    }
+                    repository.garantirSeedInicial()
                 }
-                repository.listarVoos().collect { listaVoos ->
+                repository.buscarTodos().collect { listaVoos ->
                     _uiState.update { estadoAtual ->
                         estadoAtual.copy(
                             voos = listaVoos,

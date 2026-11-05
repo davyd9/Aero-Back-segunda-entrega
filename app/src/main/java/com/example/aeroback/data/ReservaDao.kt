@@ -13,9 +13,6 @@ interface ReservaDao {
     @Query("SELECT * FROM reservas ORDER BY id DESC")
     fun buscarTodos(): Flow<List<Reserva>>
 
-    @Query("SELECT * FROM reservas ORDER BY id DESC")
-    fun listarReservas(): Flow<List<Reserva>>
-
     @Query("SELECT * FROM reservas WHERE id = :id")
     suspend fun buscarPorId(id: Int): Reserva?
 

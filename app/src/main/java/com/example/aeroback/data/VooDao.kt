@@ -13,9 +13,6 @@ interface VooDao {
     @Query("SELECT * FROM voos ORDER BY id ASC")
     fun buscarTodos(): Flow<List<Voo>>
 
-    @Query("SELECT * FROM voos ORDER BY id ASC")
-    fun listarVoos(): Flow<List<Voo>>
-
     @Query("SELECT * FROM voos WHERE id = :id")
     suspend fun buscarPorId(id: Int): Voo?
 

@@ -29,8 +29,8 @@ com.example.aeroback/
 ├── data/                                  # Camada de Dados Local (Room)
 │   ├── Voo.kt                             # @Entity(tableName = "voos")
 │   ├── Reserva.kt                         # @Entity(tableName = "reservas")
-│   ├── VooDao.kt                          # @Dao com buscarTodos() / listarVoos() retornando Flow<List<Voo>>
-│   ├── ReservaDao.kt                      # @Dao com buscarTodos() / listarReservas() retornando Flow<List<Reserva>>
+│   ├── VooDao.kt                          # @Dao com buscarTodos() retornando Flow<List<Voo>>
+│   ├── ReservaDao.kt                      # @Dao com buscarTodos() retornando Flow<List<Reserva>>
 │   ├── AeroBackDatabase.kt                # @Database RoomDatabase em padrão Singleton
 │   └── repository/                        # Única Fonte de Verdade (Single Source of Truth)
 │       ├── VooRepository.kt               # Mediação exclusiva com VooDao
@@ -92,7 +92,7 @@ com.example.aeroback/
 * **Como estava no Trabalho 3:** Todos os arquivos principais ficavam juntos na raiz do pacote `com.example.aeroback`. As próprias telas `@Composable` instanciavam `AppDatabase.getDatabase(context)` e chamavam `vooDao` e `reservaDao` diretamente, disparando corrotinas manuais com `CoroutineScope(Dispatchers.IO).launch` e `withContext(Dispatchers.Main)` em cada clique de botão. Além disso, o estado de cada tela ficava espalhado em diversas variáveis `remember { mutableStateOf(...) }` soltas, e após cada `inserir`, `atualizar` ou `deletar` a tela precisava chamar `dao.buscarTodos()` manualmente para atualizar a lista.
 * **O que mudou no Trabalho 4 (MVVM):**
   1. Reorganizamos 100% do código em 4 pacotes bem definidos (`data`, `data.repository`, `viewmodel` e `ui`), mantendo todas as 7 telas, cores, layouts e regras de negócio intactas.
-  2. As consultas de listagem nos DAOs (`buscarTodos()` / `listarVoos()` e `listarReservas()`) deixaram de ser `suspend fun` pontuais e passaram a retornar `Flow<List<...>>` reativo.
+  2. As consultas de listagem nos DAOs (`buscarTodos()`) deixaram de ser `suspend fun` pontuais e passaram a retornar `Flow<List<...>>` reativo.
   3. Criamos `VooRepository` e `ReservaRepository` como única ponte autorizada para conversar com os DAOs.
   4. Criamos `VooViewModel` (com `VooUiState`) e `ReservaViewModel` (com `ReservaUiState`), expondo estado imutável via `StateFlow` (`_uiState` privado + `uiState` público) e executando todas as escritas e buscas por ID dentro de `viewModelScope.launch`.
   5. Criamos `VooViewModelFactory` e `ReservaViewModelFactory` implementando `ViewModelProvider.Factory` para injetar os repositórios nos ViewModels.
@@ -144,9 +144,9 @@ Substituímos dezenas de variáveis `remember` soltas por duas `data class` imut
 
 Sim, encontramos três pontos importantes durante a refatoração e corrigimos todos antes da entrega:
 
-1. **Concorrência na carga inicial (*Seed*) entre os dois ViewModels:**
-   * *O que aconteceu:* Ao iniciar o app pela primeira vez (`contarVoos() == 0` e `contarReservas() == 0`), `VooViewModel` e `ReservaViewModel` inicializavam ao mesmo tempo no bloco `init`. Sem sincronização, havia risco de `ReservaViewModel` tentar criar as reservas padrão antes dos voos iniciais existirem no banco (ou duplicar a inserção dos 3 voos).
-   * *Como corrigimos:* Protegemos a verificação de `contarVoos() == 0` e `contarReservas() == 0` com um `Mutex` (`VooRepository.seedMutex.withLock`), garantindo que os voos padrão sejam inseridos uma única vez antes da criação das reservas iniciais vinculadas aos IDs reais dos voos.
+1. **Concorrência e Persistência na Carga Inicial (*Seed*):**
+   * *O que aconteceu:* Ao iniciar o app pela primeira vez, `VooViewModel` e `ReservaViewModel` inicializavam simultaneamente no bloco `init`, e checar apenas `contarVoos() == 0` / `contarReservas() == 0` faria os dados padrão ressurgirem caso o usuário apagasse **todos** os registros e reabrisse o app.
+   * *Como corrigimos:* Sincronizamos o *seed* inicial com `Mutex` (`VooRepository.seedMutex.withLock`) e registramos a conclusão da primeira carga em `SharedPreferences` nos repositórios (`garantirSeedInicial`). Assim, os dados iniciais são criados uma única vez na primeira abertura e, se o usuário apagar todos os voos ou reservas e reabrir o app, a exclusão total permanece persistida.
 2. **Transição de tela nos Detalhes (`TelaDetalhesVoo` e `TelaCartaoEmbarque`):**
    * *O que aconteceu:* Como o `ViewModel` passou a ser compartilhado no `NavHost`, ao abrir os detalhes de um segundo voo/reserva, no primeiro *frame* antes do `LaunchedEffect(id)` rodar, o `uiState` ainda continha o item anterior (ou `null` com `carregandoDetalhes == false`), piscando rapidamente na tela.
    * *Como corrigimos:* Adicionamos `idVooCarregado` / `idReservaCarregada` ao `UiState` e validamos `uiState.carregandoDetalhes || uiState.idVooCarregado != flightId` para exibir o `CircularProgressIndicator` imediatamente até que o novo item do banco chegue.

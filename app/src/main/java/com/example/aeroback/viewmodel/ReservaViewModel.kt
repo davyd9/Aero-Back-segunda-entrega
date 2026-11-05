@@ -29,24 +29,14 @@ class ReservaViewModel(
             _uiState.update { it.copy(isLoading = true, erro = null) }
             try {
                 VooRepository.seedMutex.withLock {
-                    if (vooRepository.contarVoos() == 0) {
-                        vooRepository.inserirListaVoos(VooRepository.voosPadrao())
-                    }
-                    if (reservaRepository.contarReservas() == 0) {
-                        val voosCadastrados = vooRepository.listarVoos().first()
-                        if (voosCadastrados.isNotEmpty()) {
-                            val primeiroVooId = voosCadastrados.first().id
-                            val segundoVooId = voosCadastrados.getOrNull(1)?.id ?: primeiroVooId
-                            reservaRepository.inserirListaReservas(
-                                ReservaRepository.reservasPadrao(primeiroVooId, segundoVooId)
-                            )
-                        }
-                    }
+                    vooRepository.garantirSeedInicial()
+                    val voosCadastrados = vooRepository.buscarTodos().first()
+                    reservaRepository.garantirSeedInicial(voosCadastrados)
                 }
 
                 combine(
-                    reservaRepository.listarReservas(),
-                    vooRepository.listarVoos()
+                    reservaRepository.buscarTodos(),
+                    vooRepository.buscarTodos()
                 ) { listaReservas, listaVoos ->
                     listaReservas to listaVoos
                 }.collect { (listaReservas, listaVoos) ->
@@ -189,10 +179,31 @@ class ReservaViewModel(
         val estado = _uiState.value
         val atual = estado.reservaEmEdicao ?: return
 
+        val mudouBagagem = estado.bagagemInput != atual.bagagemDespachada
+        val novoPrecoFinal = if (mudouBagagem) {
+            val deltaBagagem = if (estado.bagagemInput) 150.0 else -150.0
+            (atual.precoFinal + deltaBagagem).coerceAtLeast(0.0)
+        } else {
+            atual.precoFinal
+        }
+        val novoCashback = if (mudouBagagem) {
+            val vooRelacionado = estado.voosDisponiveis.find { it.id == atual.vooId }
+            val taxaCashback = when {
+                vooRelacionado != null -> vooRelacionado.cashbackPorcento / 100.0
+                atual.precoFinal > 0.0 -> atual.cashbackGanho / atual.precoFinal
+                else -> 0.10
+            }
+            novoPrecoFinal * taxaCashback
+        } else {
+            atual.cashbackGanho
+        }
+
         val reservaEditada = atual.copy(
             passageiro = estado.passageiroInput.ifBlank { atual.passageiro },
             assento = estado.assentoInput.ifBlank { atual.assento },
-            bagagemDespachada = estado.bagagemInput
+            bagagemDespachada = estado.bagagemInput,
+            precoFinal = novoPrecoFinal,
+            cashbackGanho = novoCashback
         )
 
         _uiState.update { it.copy(reservaEmEdicao = null) }
